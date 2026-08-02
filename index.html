@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Should i hide a secret here or smth</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      background: #121314;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+      margin: 0;
+    }
+    .container {
+      width: 100%;
+      max-width: 600px;
+      text-align: center;
+    }
+    .search-box {
+      background: #1e2022;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+      margin-bottom: 25px;
+    }
+    .input-group {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 15px;
+    }
+    input {
+      flex: 1;
+      padding: 12px;
+      border-radius: 6px;
+      border: 1px solid #333;
+      background: #0a0a0b;
+      color: #fff;
+      font-size: 16px;
+      outline: none;
+    }
+    button {
+      padding: 12px 24px;
+      border-radius: 6px;
+      border: none;
+      background: #00a2ff;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #0082cc;
+    }
+    #statusMsg {
+      margin-top: 15px;
+      color: #aaa;
+      font-size: 14px;
+    }
+    .results-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      width: 100%;
+    }
+    .result-card {
+      background: #1e2022;
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      text-align: left;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+      border-left: 4px solid #00a2ff;
+    }
+    .result-card img {
+      width: 80px;
+      height: 80px;
+      object-fit: cover;
+      border-radius: 8px;
+      background: #0a0a0b;
+      flex-shrink: 0;
+    }
+    .info {
+      flex-grow: 1;
+    }
+    .tag {
+      display: inline-block;
+      background: #00a2ff;
+      color: #fff;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: bold;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .info h3 {
+      margin: 0 0 6px 0;
+      font-size: 18px;
+      word-break: break-word;
+    }
+    .info a {
+      color: #00a2ff;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .info a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="search-box">
+      <h2 style="margin: 0;">Roblox Id Finder</h2>
+      <div class="input-group">
+        <input type="number" id="idInput" placeholder="Enter Roblox ID..." value="1" />
+        <button onclick="searchAllTypes()">Search</button>
+      </div>
+      <div id="statusMsg">Uhh ig you gotta input a roblox id and it should work</div>
+    </div>
+
+    <div id="results" class="results-grid"></div>
+  </div>
+
+  <script>
+    // Fallback Image SVG (used if a thumbnail fails to load)
+    const PLACEHOLDER_IMG = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'><rect width='100%' height='100%' fill='%23111113'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%23555' font-size='12' font-family='sans-serif'>No Image</text></svg>";
+
+    // Helper function that attempts multiple CORS proxies sequentially
+    async function fetchRobloxApi(targetUrl) {
+      const proxies = [
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+        `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`
+      ];
+
+      for (const proxy of proxies) {
+        try {
+          const res = await fetch(proxy);
+          if (res.ok) {
+            const text = await res.text();
+            return JSON.parse(text);
+          }
+        } catch (e) {
+          // Continue to next proxy on failure
+        }
+      }
+      return null;
+    }
+
+    async function searchAllTypes() {
+      const id = document.getElementById("idInput").value.trim();
+      const status = document.getElementById("statusMsg");
+      const resultsContainer = document.getElementById("results");
+
+      if (!id) return;
+
+      status.innerText = "Searching across Roblox categories...";
+      resultsContainer.innerHTML = "";
+
+      // List of search tasks
+      const fetchTasks = [
+        checkUser(id),
+        checkAsset(id),
+        checkGroup(id),
+        checkBadge(id),
+        checkGamePass(id),
+        checkPlace(id)
+      ];
+
+      // Run all tasks in parallel
+      const results = await Promise.allSettled(fetchTasks);
+
+      let foundCount = 0;
+      results.forEach(res => {
+        if (res.status === "fulfilled" && res.value) {
+          foundCount++;
+          renderCard(res.value);
+        }
+      });
+
+      if (foundCount === 0) {
+        status.innerText = "No entity found for this ID (or proxies were blocked). Check console for details.";
+      } else {
+        status.innerText = `Found ${foundCount} result(s) for ID ${id}:`;
+      }
+    }
+
+    // 1. User Check
+    async function checkUser(id) {
+      const data = await fetchRobloxApi(`https://users.roblox.com/v1/users/${id}`);
+      if (!data || !data.name) return null;
+
+      const imgData = await fetchRobloxApi(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${id}&size=150x150&format=Png`);
+      const imgUrl = imgData?.data?.[0]?.imageUrl || "";
+
+      return {
+        type: "User Profile",
+        name: `${data.displayName} (@${data.name})`,
+        img: imgUrl,
+        link: `https://www.roblox.com/users/${id}/profile`
+      };
+    }
+
+    // 2. Asset / Catalog Item Check
+    async function checkAsset(id) {
+      const data = await fetchRobloxApi(`https://economy.roblox.com/v2/assets/${id}/details`);
+      if (!data || !data.Name) return null;
+
+      const imgData = await fetchRobloxApi(`https://thumbnails.roblox.com/v1/assets?assetIds=${id}&size=150x150&format=Png`);
+      const imgUrl = imgData?.data?.[0]?.imageUrl || "";
+
+      return {
+        type: "Catalog Asset",
+        name: data.Name,
+        img: imgUrl,
+        link: `https://www.roblox.com/catalog/${id}`
+      };
+    }
+
+    // 3. Group Check
+    async function checkGroup(id) {
+      const data = await fetchRobloxApi(`https://groups.roblox.com/v1/groups/${id}`);
+      if (!data || !data.name) return null;
+
+      const imgData = await fetchRobloxApi(`https://thumbnails.roblox.com/v1/groups/icons?groupIds=${id}&size=150x150&format=Png`);
+      const imgUrl = imgData?.data?.[0]?.imageUrl || "";
+
+      return {
+        type: "Group",
+        name: data.name,
+        img: imgUrl,
+        link: `https://www.roblox.com/groups/${id}`
+      };
+    }
+
+    // 4. Badge Check
+    async function checkBadge(id) {
+      const data = await fetchRobloxApi(`https://badges.roblox.com/v1/badges/${id}`);
+      if (!data || !data.name) return null;
+
+      const imgData = await fetchRobloxApi(`https://thumbnails.roblox.com/v1/badges/icons?badgeIds=${id}&size=150x150&format=Png`);
+      const imgUrl = imgData?.data?.[0]?.imageUrl || "";
+
+      return {
+        type: "Badge",
+        name: data.name,
+        img: imgUrl,
+        link: `https://www.roblox.com/badges/${id}`
+      };
+    }
+
+    // 5. Game Pass Check
+    async function checkGamePass(id) {
+      const data = await fetchRobloxApi(`https://gamepasses.roblox.com/v1/gamepasses/${id}/game-pass-product-info`);
+      if (!data || !data.Name) return null;
+
+      const imgData = await fetchRobloxApi(`https://thumbnails.roblox.com/v1/game-passes?gamePassIds=${id}&size=150x150&format=Png`);
+      const imgUrl = imgData?.data?.[0]?.imageUrl || "";
+
+      return {
+        type: "Game Pass",
+        name: data.Name,
+        img: imgUrl,
+        link: `https://www.roblox.com/game-passes/${id}`
+      };
+    }
+
+    // 6. Place / Game Check
+    async function checkPlace(id) {
+      const data = await fetchRobloxApi(`https://games.roblox.com/v1/games/multiget-place-details?placeIds=${id}`);
+      if (!data || !data[0] || !data[0].name) return null;
+
+      const imgData = await fetchRobloxApi(`https://thumbnails.roblox.com/v1/places/gameicons?placeIds=${id}&size=150x150&format=Png`);
+      const imgUrl = imgData?.data?.[0]?.imageUrl || "";
+
+      return {
+        type: "Place / Experience",
+        name: data[0].name,
+        img: imgUrl,
+        link: `https://www.roblox.com/games/${id}`
+      };
+    }
+
+    // Render result card to DOM
+    function renderCard(item) {
+      const container = document.getElementById("results");
+      const card = document.createElement("div");
+      card.className = "result-card";
+
+      const imgSrc = item.img ? item.img : PLACEHOLDER_IMG;
+
+      card.innerHTML = `
+        <img src="${imgSrc}" onerror="this.src='${PLACEHOLDER_IMG}'" alt="${item.name}">
+        <div class="info">
+          <span class="tag">${item.type}</span>
+          <h3>${item.name}</h3>
+          <a href="${item.link}" target="_blank">View on Roblox 🔗</a>
+        </div>
+      `;
+
+      container.appendChild(card);
+    }
+  </script>
+</body>
+</html>
